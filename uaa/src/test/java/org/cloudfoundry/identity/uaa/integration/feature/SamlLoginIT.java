@@ -303,8 +303,14 @@ public class SamlLoginIT {
 
     @Test
     public void testLoginClientIDPAuthorization() throws Exception {
-        IdentityProvider provider = createIdentityProvider();
-        List<String> idps = Arrays.asList(provider.getConfigValue(IdentityProviderDefinition.class).getIdpEntityAlias());
+        IdentityProvider provider1 = createIdentityProvider();
+        assertEquals(provider1.getOriginKey(), provider1.getConfigValue(IdentityProviderDefinition.class).getIdpEntityAlias());
+
+        IdentityProvider provider2 = createIdentityProvider();
+        assertEquals(provider2.getOriginKey(), provider2.getConfigValue(IdentityProviderDefinition.class).getIdpEntityAlias());
+
+        List<String> idps = Arrays.asList(provider1.getOriginKey(), provider2.getOriginKey());
+
         webDriver.get(baseUrl + "/logout.do");
         String adminAccessToken = testClient.getOAuthAccessToken("admin", "adminsecret", "client_credentials", "clients.read clients.write clients.secret");
 
@@ -323,6 +329,33 @@ public class SamlLoginIT {
         webDriver.findElement(By.xpath("//input[@value='Sign in']")).click();
 
         assertThat(webDriver.findElement(By.cssSelector("p")).getText(), Matchers.containsString("The application is not authorized for your account."));
+        webDriver.get(baseUrl + "/logout.do");
+    }
+
+    @Test
+    public void testSamlLoginClientIDPAuthorizationAutomaticRedirect() throws Exception {
+        IdentityProvider provider = createIdentityProvider();
+        assertEquals(provider.getOriginKey(), provider.getConfigValue(IdentityProviderDefinition.class).getIdpEntityAlias());
+        List<String> idps = Arrays.asList(provider.getOriginKey());
+        webDriver.get(baseUrl + "/logout.do");
+        String adminAccessToken = testClient.getOAuthAccessToken("admin", "adminsecret", "client_credentials", "clients.read clients.write clients.secret");
+
+        String clientId = UUID.randomUUID().toString();
+        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "openid", "authorization_code", "uaa.none", "http://localhost:8080/login");
+        clientDetails.setClientSecret("secret");
+        clientDetails.addAdditionalInformation(ClientConstants.ALLOWED_PROVIDERS, idps);
+
+        testClient.createClient(adminAccessToken, clientDetails);
+
+        webDriver.get(baseUrl + "/oauth/authorize?client_id=" + clientId + "&redirect_uri=http%3A%2F%2Flocalhost%3A8888%2Flogin&response_type=code&state=8tp0tR");
+
+        //we should not be in the Simple SAML PHP site
+        webDriver.findElement(By.xpath("//h2[contains(text(), 'Enter your username and password')]"));
+        webDriver.findElement(By.name("username")).clear();
+        webDriver.findElement(By.name("username")).sendKeys(testAccounts.getUserName());
+        webDriver.findElement(By.name("password")).sendKeys(testAccounts.getPassword());
+        webDriver.findElement(By.xpath("//input[@value='Login']")).click();
+
         webDriver.get(baseUrl + "/logout.do");
     }
 
